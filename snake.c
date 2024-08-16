@@ -30,6 +30,14 @@ typedef struct snake_t {
     int num_segments;
 } Snake;
 
+
+// helper function to generate a random float
+float float_rand(float min, float max) {
+    float scale = rand() / (float) RAND_MAX;
+    return min + scale * (max - min);
+}
+
+
 // create and initialize the snake struct
 Snake *init_snake() {
 
@@ -60,6 +68,25 @@ Snake *init_snake() {
 
     return snake;
 }
+
+
+// adds a new segment to the snake at the given coordiantes
+void extend_snake_tail(Snake *snake, int x, int y) {
+
+    Segment *new_tail = malloc(sizeof(Segment));
+
+    // initialize new tail struct
+    new_tail->next = NULL;
+    new_tail->prev = snake->tail;
+    new_tail->x = x;
+    new_tail->y = y;
+
+    // update last tail and snake attributes
+    snake->tail->next = new_tail;
+    snake->tail = new_tail;
+    snake->num_segments += 1;
+}
+
 
 // move the snake in the direction it is looking
 void move_snake(Snake *snake) {
@@ -109,7 +136,13 @@ void move_snake(Snake *snake) {
 
         curr = curr->next;
     }
+
+    // add a new segment to the snake
+    if (float_rand(0, 1) > 0.5) {
+        extend_snake_tail(snake, new_x, new_y);
+    }
 }
+
 
 // print the snake on the window
 void display_snake(Snake *snake) {
@@ -139,6 +172,7 @@ void display_snake(Snake *snake) {
     // refresh the window
     refresh();
 }
+
 
 // main function
 int main(int argc, char *argv[]) {

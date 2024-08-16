@@ -25,6 +25,7 @@ typedef struct segment_t {
 // define struct for snake
 typedef struct snake_t {
     Segment *head;
+    Segment *tail;
     LookDirection looking;
     int num_segments;
 } Snake;
@@ -32,14 +33,29 @@ typedef struct snake_t {
 // create and initialize the snake struct
 Snake *init_snake() {
 
+    int add_2nd_seg = 1;
+
     Snake *snake = malloc(sizeof(Snake));
     Segment *head = malloc(sizeof(Segment));
 
     head->x = COLS / 2;
     head->y = LINES / 2;
+    head->prev = NULL;
+    head->next = NULL;
+
+    if (add_2nd_seg) {
+        Segment *test = malloc(sizeof(Segment));
+
+        head->next = test;
+        test->prev = head;
+        test->next = NULL;
+        test->x = head->x;
+        test->y = head->y - 1;
+    }
 
     snake->looking = LOOKING_UP;
     snake->head = head;
+    snake->tail = head;
     snake->num_segments = 1;
 
     return snake;
@@ -134,6 +150,8 @@ int main(int argc, char *argv[]) {
     initscr();
     cbreak();
     noecho();
+    curs_set(0);
+    keypad(stdscr, TRUE);
 
     // initialize colors
 	// if(has_colors()) {
@@ -144,14 +162,38 @@ int main(int argc, char *argv[]) {
 
     // create snake struct
     Snake *snake = init_snake();
+    int ch;
+
+    // display the initial snake on screen
+    display_snake(snake);
 
     // main game loop
     while (1) {
 
+        // get the next key press
+        ch = getch();
+
+        // update the snake's looking direction based on arrow keys
+        switch (ch) {
+            case KEY_UP:
+                snake->looking = LOOKING_UP;
+                break;
+            case KEY_RIGHT:
+                snake->looking = LOOKING_RIGHT;
+                break;
+            case KEY_DOWN:
+                snake->looking = LOOKING_DOWN;
+                break;
+            case KEY_LEFT:
+                snake->looking = LOOKING_LEFT;
+                break;
+            default:
+                break;
+        }
+
+        // update and display the snake
         move_snake(snake);
         display_snake(snake);
-
-        getch();
     }
 
 	endwin();

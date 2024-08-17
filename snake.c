@@ -1,9 +1,19 @@
 
+#define _XOPEN_SOURCE_EXTENDED
+
 #include <stdlib.h>
-#include <ncurses.h>
+// #include <ncurses.h>
+#include <ncursesw/curses.h>
+#include <locale.h>
+#include <wchar.h>
 
 // debug log file
 FILE *log_file;
+
+// block wide characters
+wchar_t full_block[] = { L'\u2588', L'\0' };
+wchar_t lower_half_block[] = { L'\u2584', L'\0' };
+wchar_t upper_half_block[] = { L'\u2580', L'\0' };
 
 // define possible look directions
 typedef enum {
@@ -201,8 +211,8 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
     int temp_x, temp_y;
     fprintf(log_file, "new x: %d, y: %d\n", new_x, new_y);
 
-    // next coordinates intersect a segment
-    int hit_segment = 0;
+    // collided with wall or segment
+    int snake_collided = 0;
 
     // shift coordinates down every segment
     Segment *tail = snake->tail;
@@ -213,10 +223,11 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
         temp_x = curr->x;
         temp_y = curr->y;
 
-        // check if new coordinates hit a previous segment
-        if (temp_x == new_head_x && temp_y == new_head_y && 
-           (curr != tail || (curr == tail && num_segments < 3))) {
-            hit_segment = 1;
+        // check if new coordinates hit a previous segment or collided with a wall
+        if ((temp_x == new_head_x && temp_y == new_head_y && 
+           (curr != tail || (curr == tail && num_segments < 3))) || 
+           (new_x == 0 || new_x == COLS - 1 || new_y == 0 || new_y == LINES - 1)) {
+            snake_collided = 1;
             break;
         }
 
@@ -233,8 +244,8 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
     snake->prev_tail_x = new_x;
     snake->prev_tail_y = new_y;
 
-    // the new coordinate intersected the previous segment, game over
-    if (hit_segment) {
+    // the new coordinate intersected the previous segment or wall, game over
+    if (snake_collided) {
         fprintf(log_file, "GAME OVER!\n");
         *game_over = 1;
     }
@@ -258,8 +269,8 @@ int gen_food_coords(Snake *snake, int *food_x, int *food_y) {
     // randomly generate x and y coordinates until valid one is found
     for (int tries = 0; tries < 1000; tries++) {
         
-        x = int_rand(0, COLS-1);
-        y = int_rand(0, LINES-1);
+        x = int_rand(1, COLS-1);
+        y = int_rand(1, LINES-1);
 
         fprintf(log_file, "random try: %d, (%d, %d)\n", tries, x, y);
 
@@ -275,8 +286,8 @@ int gen_food_coords(Snake *snake, int *food_x, int *food_y) {
     if (!valid) {
 
         // iterate over every possible coordinate
-        for (y = 0; !valid && y < LINES; y++) {
-            for (x = 0; x < COLS; x++) {
+        for (y = 1; !valid && y < LINES-1; y++) {
+            for (x = 1; x < COLS-1; x++) {
 
                 // found coordinate not covered by the snake
                 if (!is_snake_at_coords(snake, x, y)) {
@@ -338,6 +349,23 @@ void print_score(Snake *snake) {
 }
 
 
+// print the walls on the window
+void print_walls() {
+
+    // print vertical walls
+    for (int y = 0; y < LINES; y++) {
+        mvaddwstr(y, 0, full_block);
+        mvaddwstr(y, COLS-1, full_block);
+    }
+
+    // print horizontal walls
+    for (int x = 0; x < COLS; x++) {
+        mvaddwstr(0, x, lower_half_block);
+        mvaddwstr(LINES-1, x, upper_half_block);
+    }
+}
+
+
 // print the game on the window
 void print_game(Snake *snake, int food_x, int food_y) {
 
@@ -345,6 +373,7 @@ void print_game(Snake *snake, int food_x, int food_y) {
     clear();
 
     // call various game print methods
+    print_walls();
     print_score(snake);
     print_food(food_x, food_y);
     print_snake(snake);
@@ -361,6 +390,7 @@ int main(int argc, char *argv[]) {
     log_file = fopen("log.txt", "w+");
     
     // initialize curses
+    setlocale(LC_ALL, "");
     initscr();
     cbreak();
     noecho();

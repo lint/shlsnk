@@ -38,8 +38,6 @@ typedef struct snake_t {
     Segment *tail;
     LookDirection looking;
     int num_segments;
-    int prev_tail_x;
-    int prev_tail_y;
 } Snake;
 
 
@@ -73,8 +71,6 @@ Snake *init_snake() {
     snake->head = head;
     snake->tail = head;
     snake->num_segments = 1;
-    snake->prev_tail_x = head->x;
-    snake->prev_tail_y = head->y;
 
     if (add_2nd_seg) {
         Segment *tail = malloc(sizeof(Segment));
@@ -86,8 +82,6 @@ Snake *init_snake() {
         tail->y = head->y + 1;
         snake->num_segments += 1;
         snake->tail = tail;
-        snake->prev_tail_x = tail->x;
-        snake->prev_tail_y = tail->y;
     }
 
     return snake;
@@ -127,24 +121,26 @@ void log_snake(Snake *snake) {
 
 
 // adds a new segment to the snake with the given coordiantes
-void extend_snake_tail(Snake *snake) {
+void extend_snake_tail(Snake *snake, int iterations) {
 
-    fprintf(log_file, "extending snake ...\n");
+    fprintf(log_file, "extending snake (x%d)...\n", iterations);
 
-    Segment *new_tail = malloc(sizeof(Segment));
+    for (int i = 0; i < iterations; i++) {
+        Segment *new_tail = malloc(sizeof(Segment));
 
-    // initialize new tail struct
-    new_tail->next = NULL;
-    new_tail->prev = snake->tail;
-    new_tail->x = snake->prev_tail_x;
-    new_tail->y = snake->prev_tail_y;
+        // initialize new tail struct
+        new_tail->next = NULL;
+        new_tail->prev = snake->tail;
+        new_tail->x = snake->tail->x;
+        new_tail->y = snake->tail->y;
 
-    // update last tail and snake attributes
-    snake->tail->next = new_tail;
-    snake->tail = new_tail;
-    snake->num_segments += 1;
+        // update last tail and snake attributes
+        snake->tail->next = new_tail;
+        snake->tail = new_tail;
+        snake->num_segments += 1;
 
-    log_snake(snake);
+        log_snake(snake);
+    }
 }
 
 
@@ -240,10 +236,6 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
         curr = curr->next;
     }
 
-    // store the previous tail position of the snake
-    snake->prev_tail_x = new_x;
-    snake->prev_tail_y = new_y;
-
     // the new coordinate intersected the previous segment or wall, game over
     if (snake_collided) {
         fprintf(log_file, "GAME OVER!\n");
@@ -269,8 +261,8 @@ int gen_food_coords(Snake *snake, int *food_x, int *food_y) {
     // randomly generate x and y coordinates until valid one is found
     for (int tries = 0; tries < 1000; tries++) {
         
-        x = int_rand(1, COLS-1);
-        y = int_rand(1, LINES-1);
+        x = int_rand(1, COLS-2);
+        y = int_rand(1, LINES-2);
 
         fprintf(log_file, "random try: %d, (%d, %d)\n", tries, x, y);
 
@@ -469,7 +461,7 @@ int main(int argc, char *argv[]) {
             fprintf(log_file, "gen food coords: %d, (%d, %d)\n", success, food_x, food_y);
 
             // add segment to the snake
-            extend_snake_tail(snake);
+            extend_snake_tail(snake, 1);
         }
     }
 

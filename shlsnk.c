@@ -6,6 +6,8 @@
 #include <ncursesw/curses.h>
 #include <locale.h>
 #include <wchar.h>
+#include <math.h>
+#include <string.h>
 
 // debug log file
 FILE *log_file;
@@ -362,7 +364,7 @@ void print_walls() {
 void print_game(Snake *snake, int food_x, int food_y) {
 
     // clear the previous screen
-    clear();
+    erase();
 
     // call various game print methods
     print_walls();
@@ -375,27 +377,34 @@ void print_game(Snake *snake, int food_x, int food_y) {
 }
 
 
-// main function
-int main(int argc, char *argv[]) {
+// print the game over screen
+void print_game_over(Snake *snake) {
 
-    // open log file
-    log_file = fopen("log.txt", "w+");
+    // clear the previous screen
+    erase();
+
+    // define game over score strings
+    char *game_over_str = "GAME OVER!";
+    char *score_part_str = "SCORE:";
+    char *retry_str = "RETRY? (Y/N)";
+
+    int game_over_len = strlen(game_over_str);
+    int score_part_len = strlen(score_part_str) + floor(log10(abs(snake->num_segments))) + 1;
+    int retry_len = strlen(retry_str);
+
+    // print the strings on screen
+    mvprintw(LINES/2 - 2, (COLS-game_over_len)/2, "%s", game_over_str);
+    mvprintw(LINES/2 - 1, (COLS-score_part_len)/2, "%s %d", score_part_str, snake->num_segments);
+    mvprintw(LINES/2 + 1, (COLS-retry_len)/2, "%s", retry_str);
+
+    // refresh the window
+    refresh();
+}
+
+
+// contains loop that runs the game
+int run_game() {
     
-    // initialize curses
-    setlocale(LC_ALL, "");
-    initscr();
-    cbreak();
-    noecho();
-    curs_set(0);
-    keypad(stdscr, TRUE);
-
-    // initialize colors
-	// if(has_colors()) {
-    //     start_color();
-    //     init_pair(1, COLOR_RED, COLOR_BLACK);
-    //     init_pair(2, COLOR_BLACK, COLOR_CYAN);
-	// }
-
     // initialize data structures and variables
     Snake *snake = init_snake();
     int game_over = 0;
@@ -423,26 +432,41 @@ int main(int argc, char *argv[]) {
             case 'W':
             case 'w':
             case KEY_UP:
-                snake->looking = LOOKING_UP;
+                if (snake->looking != LOOKING_DOWN || snake->num_segments <= 1) {
+                    snake->looking = LOOKING_UP;
+                }
                 break;
             case 'D':
             case 'd':
             case KEY_RIGHT:
-                snake->looking = LOOKING_RIGHT;
+                if (snake->looking != LOOKING_LEFT || snake->num_segments <= 1) {
+                    snake->looking = LOOKING_RIGHT;
+                }
                 break;
             case 'S':
             case 's':
             case KEY_DOWN:
-                snake->looking = LOOKING_DOWN;
+                if (snake->looking != LOOKING_UP || snake->num_segments <= 1) {
+                    snake->looking = LOOKING_DOWN;
+                }
                 break;
             case 'A':
             case 'a':
             case KEY_LEFT:
-                snake->looking = LOOKING_LEFT;
+                if (snake->looking != LOOKING_RIGHT || snake->num_segments <= 1) {
+                    snake->looking = LOOKING_LEFT;
+                }
                 break;
             case 'Q':
             case 'q':
                 game_over = 1;
+                break;
+            case 'R':
+            case 'r':
+                free_snake(snake);
+                snake = init_snake();
+                gen_food_coords(snake, &food_x, &food_y);
+                // TODO: maybe put reset confirmation y/n?
                 break;
             default:
                 break;
@@ -465,8 +489,63 @@ int main(int argc, char *argv[]) {
         }
     }
 
+    // print the final score
+    print_game_over(snake);
+
+    int retry = -1;
+    while (retry < 0) {
+
+        ch = getch();
+        switch (ch) {
+            case 'Y':
+            case 'y':
+                retry = 1;
+                break;
+            case 'N':
+            case 'n':
+            case 'Q':
+            case 'q':
+                retry = 0;
+                break;
+            default:
+                break;
+        }
+    }
+
     // cleanup and exit
     free_snake(snake);
+
+    return retry;
+}
+
+
+// main function
+int main(int argc, char *argv[]) {
+
+    // open log file
+    log_file = fopen("log.txt", "w+");
+    
+    // initialize curses
+    setlocale(LC_ALL, "");
+    initscr();
+    cbreak();
+    noecho();
+    curs_set(0);
+    keypad(stdscr, TRUE);
+
+    // initialize colors
+	// if(has_colors()) {
+    //     start_color();
+    //     init_pair(1, COLOR_RED, COLOR_BLACK);
+    //     init_pair(2, COLOR_BLACK, COLOR_CYAN);
+	// }
+
+    // retry snake game until quit
+    int retry = 1;
+    while (retry) {
+        retry = run_game();
+    }
+    
     fclose(log_file);
 	endwin();
 

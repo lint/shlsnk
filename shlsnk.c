@@ -10,6 +10,9 @@
 #include <string.h>
 #include <sys/time.h>
 
+#define MIN(a,b) (((a)<(b))?(a):(b))
+#define MAX(a,b) (((a)>(b))?(a):(b))
+
 // debug log file
 FILE *log_file;
 
@@ -168,7 +171,7 @@ int is_snake_at_coords(Snake *snake, int x, int y) {
 
 
 // move the snake in the direction it is looking
-void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_eat_food) {
+void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *should_gen_food, int *should_extend_snake) {
 
     fprintf(log_file, "moving snake ...\n");
 
@@ -225,7 +228,7 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
         // check if new coordinates hit a previous segment or collided with a wall
         if ((temp_x == new_head_x && temp_y == new_head_y && 
            (curr != tail || (curr == tail && num_segments < 3))) || 
-           (new_x == 0 || new_x == COLS - 1 || new_y == 0 || new_y == LINES - 1)) {
+           (new_x <= 0 || new_x >= COLS - 1 || new_y <= 0 || new_y >= LINES - 1)) {
             snake_collided = 1;
             break;
         }
@@ -248,8 +251,9 @@ void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_e
     // check if the new head position ate the food
     if (new_head_x == food_x && new_head_y == food_y) {
         
-        // set flag to generate new food coordinates
-        *did_eat_food = 1;
+        // set flags to generate new food coordinates and extend snake
+        *should_gen_food = 1;
+        *should_extend_snake = 1;
     }
 }
 
@@ -305,6 +309,32 @@ int gen_food_coords(Snake *snake, int *food_x, int *food_y) {
     *food_y = y;
 
     return valid;
+}
+
+
+// check if food coords are out of bounds
+void check_food_bounds(int food_x, int food_y, int *should_gen_food) {
+
+    if (food_x <= 0 || food_x >= COLS - 1 || food_y <= 0 || food_y >= LINES - 1) {
+        *should_gen_food = 1;
+    }
+}
+
+
+// check if game was won
+int did_win_snake(Snake *snake) {
+
+    // game is won if every valid game tile is covered by the snake
+    for (int y = 1; y < LINES - 1; y++) {
+        for (int x = 1; x < COLS - 1; x++) {
+
+            if (!is_snake_at_coords(snake, x, y)) {
+                return 0;
+            }
+        }
+    }
+
+    return 1;
 }
 
 
@@ -385,18 +415,25 @@ void print_game_over(Snake *snake) {
     erase();
 
     // define game over score strings
+    char *win_str = "*** YOU WON :) CONGRATULATIONS!!! ***";
     char *game_over_str = "GAME OVER!";
     char *score_part_str = "SCORE:";
     char *retry_str = "RETRY? (Y/N)";
 
+    int win_str_len = strlen(win_str);
     int game_over_len = strlen(game_over_str);
     int score_part_len = strlen(score_part_str) + floor(log10(abs(snake->num_segments))) + 1;
     int retry_len = strlen(retry_str);
 
     // print the strings on screen
-    mvprintw(LINES/2 - 2, (COLS-game_over_len)/2, "%s", game_over_str);
-    mvprintw(LINES/2 - 1, (COLS-score_part_len)/2, "%s %d", score_part_str, snake->num_segments);
-    mvprintw(LINES/2 + 1, (COLS-retry_len)/2, "%s", retry_str);
+    mvprintw(MAX(LINES/2 - 2, 1), (COLS-game_over_len)/2, "%s", game_over_str);
+    mvprintw(MAX(LINES/2 - 1, 2), (COLS-score_part_len)/2, "%s %d", score_part_str, snake->num_segments);
+    mvprintw(MAX(LINES/2 + 1, 3), (COLS-retry_len)/2, "%s", retry_str);
+
+    // only print win text if actually won
+    if (did_win_snake(snake)) {
+        mvprintw(MAX(LINES/2 - 6, 0), (COLS-win_str_len)/2, "%s", win_str);
+    }
 
     // refresh the window
     refresh();
@@ -409,9 +446,10 @@ int play_snake() {
     // initialize data structures and variables
     Snake *snake = init_snake();
     struct timeval time_start, time_end; 
-    double frame_time_duration = (0.5) * 1000000L; 
+    double frame_time_duration = (1./3) * 1000000L; 
     int game_over = 0;
-    int did_eat_food = 0;
+    int should_gen_food = 0;
+    int should_extend_snake = 0;
     int food_x, food_y;
     int ch;
 
@@ -431,18 +469,26 @@ int play_snake() {
         gettimeofday(&time_start, NULL);
 
         // update and display the snake
-        move_snake(snake, food_x, food_y, &game_over, &did_eat_food);
+        move_snake(snake, food_x, food_y, &game_over, &should_gen_food, &should_extend_snake);
         print_game(snake, food_x, food_y);
 
-        // check if food was eaten
-        if (did_eat_food) {
-            did_eat_food = 0;
+        // check if food is out of bounds
+        check_food_bounds(food_x, food_y, &should_gen_food);
 
-            // generate new food coords
-            int success = gen_food_coords(snake, &food_x, &food_y);
-            fprintf(log_file, "gen food coords: %d, (%d, %d)\n", success, food_x, food_y);
+        // break immediately if game over
+        if (game_over) {
+            break;
+        }
 
-            // add segment to the snake
+        // check if should generate new food coordinates
+        if (should_gen_food) {
+            should_gen_food = 0;
+            gen_food_coords(snake, &food_x, &food_y);
+        }
+
+        // check if should extend snake
+        if (should_extend_snake) {
+            should_extend_snake = 0;
             extend_snake_tail(snake, 1);
         }
 
@@ -548,7 +594,7 @@ void start_game() {
     // retry snake game until quit
     int retry = 1;
     while (retry) {
-        retry = run_game();
+        retry = play_snake();
     }
 }
 

@@ -28,6 +28,8 @@ typedef struct snake_t {
     Segment *tail;
     LookDirection looking;
     int num_segments;
+    int prev_tail_x;
+    int prev_tail_y;
 } Snake;
 
 
@@ -35,6 +37,12 @@ typedef struct snake_t {
 float float_rand(float min, float max) {
     float scale = rand() / (float) RAND_MAX;
     return min + scale * (max - min);
+}
+
+
+// helper function to generate a random int
+int int_rand(int min, int max) {
+    return (rand() % (max - min + 1)) + min;
 }
 
 
@@ -55,6 +63,8 @@ Snake *init_snake() {
     snake->head = head;
     snake->tail = head;
     snake->num_segments = 1;
+    snake->prev_tail_x = head->x;
+    snake->prev_tail_y = head->y;
 
     if (add_2nd_seg) {
         Segment *tail = malloc(sizeof(Segment));
@@ -66,6 +76,8 @@ Snake *init_snake() {
         tail->y = head->y + 1;
         snake->num_segments += 1;
         snake->tail = tail;
+        snake->prev_tail_x = tail->x;
+        snake->prev_tail_y = tail->y;
     }
 
     return snake;
@@ -105,17 +117,17 @@ void log_snake(Snake *snake) {
 
 
 // adds a new segment to the snake with the given coordiantes
-void extend_snake_tail(Snake *snake, int x, int y) {
+void extend_snake_tail(Snake *snake) {
 
-    fprintf(log_file, "extending snake (%d, %d)...\n", x, y);
+    fprintf(log_file, "extending snake ...\n");
 
     Segment *new_tail = malloc(sizeof(Segment));
 
     // initialize new tail struct
     new_tail->next = NULL;
     new_tail->prev = snake->tail;
-    new_tail->x = x;
-    new_tail->y = y;
+    new_tail->x = snake->prev_tail_x;
+    new_tail->y = snake->prev_tail_y;
 
     // update last tail and snake attributes
     snake->tail->next = new_tail;
@@ -126,16 +138,36 @@ void extend_snake_tail(Snake *snake, int x, int y) {
 }
 
 
+// determines if a given coordinate is covered by the snake
+// returns: 1 if snake is at coords, 0 if not
+int is_snake_at_coords(Snake *snake, int x, int y) {
+
+    // iterate over every segment of the snake
+    Segment *curr = snake->head;
+    while (curr != NULL) {
+
+        // check if the current coordinates match
+        if (curr->x == x && curr->y == y) {
+            return 1;
+        }
+
+        curr = curr->next;
+    }
+
+    return 0;
+}
+
+
 // move the snake in the direction it is looking
-// returns: 1 for game over, 0 for continuing
-int move_snake(Snake *snake) {
+void move_snake(Snake *snake, int food_x, int food_y, int *game_over, int *did_eat_food) {
 
     fprintf(log_file, "moving snake ...\n");
 
     // do not move snake if invalid data
     if (snake->looking == LOOKING_NONE || snake->head == NULL) {
-        fprintf(log_file, "invalid snake, doing nothing ...\n");
-        return 1;
+        fprintf(log_file, "invalid snake, exit ...\n");
+        *game_over = 1;
+        return;
     }
 
     int move_x = 0;
@@ -197,28 +229,83 @@ int move_snake(Snake *snake) {
         curr = curr->next;
     }
 
+    // store the previous tail position of the snake
+    snake->prev_tail_x = new_x;
+    snake->prev_tail_y = new_y;
+
     // the new coordinate intersected the previous segment, game over
     if (hit_segment) {
         fprintf(log_file, "GAME OVER!\n");
-        return 1;
+        *game_over = 1;
     }
 
-    // add a new segment to the snake
-    if (float_rand(0, 1) > 0.75) {
-        extend_snake_tail(snake, new_x, new_y);
+    // check if the new head position ate the food
+    if (new_head_x == food_x && new_head_y == food_y) {
+        
+        // set flag to generate new food coordinates
+        *did_eat_food = 1;
+    }
+}
+
+
+// generate new food coordinates
+// returns: 1 if successfully generated coordinates, 0 if failure (all spots are snake)
+int gen_food_coords(Snake *snake, int *food_x, int *food_y) {
+
+    int x, y;
+    int valid = 0;
+
+    // randomly generate x and y coordinates until valid one is found
+    for (int tries = 0; tries < 1000; tries++) {
+        
+        x = int_rand(0, COLS-1);
+        y = int_rand(0, LINES-1);
+
+        fprintf(log_file, "random try: %d, (%d, %d)\n", tries, x, y);
+
+        // found coordinate not covered by the snake
+        if (!is_snake_at_coords(snake, x, y)) {
+            fprintf(log_file, "\tfound valid food coords! (random)\n");
+            valid = 1;
+            break;
+        }
     }
 
-    return 0;
+    // random coordinate not found
+    if (!valid) {
+
+        // iterate over every possible coordinate
+        for (y = 0; !valid && y < LINES; y++) {
+            for (x = 0; x < COLS; x++) {
+
+                // found coordinate not covered by the snake
+                if (!is_snake_at_coords(snake, x, y)) {
+                    fprintf(log_file, "\tfound valid food coords! (linear)\n");
+                    valid = 1;
+                    break;
+                }
+            }
+        }
+    }
+
+    // set x and y to -1 if no valid coordinates found
+    if (!valid) {
+        x = -1;
+        y = -1;
+    }
+
+    // set food x and y
+    *food_x = x;
+    *food_y = y;
+
+    return valid;
 }
 
 
 // print the snake on the window
-void display_snake(Snake *snake) {
+void print_snake(Snake *snake) {
 
     fprintf(log_file, "displaying snake ...\n");
-
-    // reset the window
-    clear();
 
     if (snake->head == NULL) {
         return;
@@ -236,8 +323,33 @@ void display_snake(Snake *snake) {
         
         curr = curr->next;
     }
+}
 
-    // refresh the window
+
+// print the food on the window
+void print_food(int x, int y) {
+    mvprintw(y, x, "o");
+}
+
+
+// print the score on the window
+void print_score(Snake *snake) {
+    mvprintw(0, 0, "SCORE: %d", snake->num_segments);
+}
+
+
+// print the game on the window
+void print_game(Snake *snake, int food_x, int food_y) {
+
+    // clear the previous screen
+    clear();
+
+    // call various game print methods
+    print_score(snake);
+    print_food(food_x, food_y);
+    print_snake(snake);
+
+    // display the changes to the window
     refresh();
 }
 
@@ -262,15 +374,21 @@ int main(int argc, char *argv[]) {
     //     init_pair(2, COLOR_BLACK, COLOR_CYAN);
 	// }
 
-    // create snake struct
+    // initialize data structures and variables
     Snake *snake = init_snake();
-    int ch;
     int game_over = 0;
+    int did_eat_food = 0;
+    int food_x, food_y;
+    int ch;
 
+    // generate initial food coords
+    gen_food_coords(snake, &food_x, &food_y);
+
+    // log the initial snake to file
     log_snake(snake);
 
-    // display the initial snake on screen
-    display_snake(snake);
+    // display the initial state of the game
+    print_game(snake, food_x, food_y);
 
     // main game loop
     while (!game_over) {
@@ -309,10 +427,23 @@ int main(int argc, char *argv[]) {
         }
 
         // update and display the snake
-        game_over |= move_snake(snake);
-        display_snake(snake);
+        move_snake(snake, food_x, food_y, &game_over, &did_eat_food);
+        print_game(snake, food_x, food_y);
+
+        // check if food was eaten
+        if (did_eat_food) {
+            did_eat_food = 0;
+
+            // generate new food coords
+            int success = gen_food_coords(snake, &food_x, &food_y);
+            fprintf(log_file, "gen food coords: %d, (%d, %d)\n", success, food_x, food_y);
+
+            // add segment to the snake
+            extend_snake_tail(snake);
+        }
     }
 
+    // cleanup and exit
     free_snake(snake);
     fclose(log_file);
 	endwin();

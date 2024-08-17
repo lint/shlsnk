@@ -8,6 +8,7 @@
 #include <wchar.h>
 #include <math.h>
 #include <string.h>
+#include <sys/time.h>
 
 // debug log file
 FILE *log_file;
@@ -403,10 +404,12 @@ void print_game_over(Snake *snake) {
 
 
 // contains loop that runs the game
-int run_game() {
-    
+int play_snake() {
+
     // initialize data structures and variables
     Snake *snake = init_snake();
+    struct timeval time_start, time_end; 
+    double frame_time_duration = (0.5) * 1000000L; 
     int game_over = 0;
     int did_eat_food = 0;
     int food_x, food_y;
@@ -424,53 +427,8 @@ int run_game() {
     // main game loop
     while (!game_over) {
 
-        // get the next key press
-        ch = getch();
-
-        // update the snake's looking direction based on arrow keys
-        switch (ch) {
-            case 'W':
-            case 'w':
-            case KEY_UP:
-                if (snake->looking != LOOKING_DOWN || snake->num_segments <= 1) {
-                    snake->looking = LOOKING_UP;
-                }
-                break;
-            case 'D':
-            case 'd':
-            case KEY_RIGHT:
-                if (snake->looking != LOOKING_LEFT || snake->num_segments <= 1) {
-                    snake->looking = LOOKING_RIGHT;
-                }
-                break;
-            case 'S':
-            case 's':
-            case KEY_DOWN:
-                if (snake->looking != LOOKING_UP || snake->num_segments <= 1) {
-                    snake->looking = LOOKING_DOWN;
-                }
-                break;
-            case 'A':
-            case 'a':
-            case KEY_LEFT:
-                if (snake->looking != LOOKING_RIGHT || snake->num_segments <= 1) {
-                    snake->looking = LOOKING_LEFT;
-                }
-                break;
-            case 'Q':
-            case 'q':
-                game_over = 1;
-                break;
-            case 'R':
-            case 'r':
-                free_snake(snake);
-                snake = init_snake();
-                gen_food_coords(snake, &food_x, &food_y);
-                // TODO: maybe put reset confirmation y/n?
-                break;
-            default:
-                break;
-        }
+        // get the time the frame started
+        gettimeofday(&time_start, NULL);
 
         // update and display the snake
         move_snake(snake, food_x, food_y, &game_over, &did_eat_food);
@@ -487,6 +445,70 @@ int run_game() {
             // add segment to the snake
             extend_snake_tail(snake, 1);
         }
+
+        // get the time the frame ended
+        gettimeofday(&time_end, NULL);
+        double frame_time_left = frame_time_duration - ((time_end.tv_sec - time_start.tv_sec) * 1000000L + time_end.tv_usec - time_start.tv_usec);
+
+        // use rest of frame time to read input characters
+        do {
+            
+            // get start time
+            gettimeofday(&time_start, NULL);
+
+            // get the next key press
+            ch = getch();
+
+            // update the snake's looking direction based on arrow keys
+            switch (ch) {
+                case 'W':
+                case 'w':
+                case KEY_UP:
+                    if (snake->looking != LOOKING_DOWN || snake->num_segments <= 1) {
+                        snake->looking = LOOKING_UP;
+                    }
+                    break;
+                case 'D':
+                case 'd':
+                case KEY_RIGHT:
+                    if (snake->looking != LOOKING_LEFT || snake->num_segments <= 1) {
+                        snake->looking = LOOKING_RIGHT;
+                    }
+                    break;
+                case 'S':
+                case 's':
+                case KEY_DOWN:
+                    if (snake->looking != LOOKING_UP || snake->num_segments <= 1) {
+                        snake->looking = LOOKING_DOWN;
+                    }
+                    break;
+                case 'A':
+                case 'a':
+                case KEY_LEFT:
+                    if (snake->looking != LOOKING_RIGHT || snake->num_segments <= 1) {
+                        snake->looking = LOOKING_LEFT;
+                    }
+                    break;
+                case 'Q':
+                case 'q':
+                    game_over = 1;
+                    break;
+                case 'R':
+                case 'r':
+                    free_snake(snake);
+                    snake = init_snake();
+                    gen_food_coords(snake, &food_x, &food_y);
+                    // TODO: maybe put reset confirmation y/n?
+                    break;
+                default:
+                    break;
+            }
+
+            // get duration of iteration and subtract from remaining frame time
+            gettimeofday(&time_end, NULL);
+            frame_time_left -= (time_end.tv_sec - time_start.tv_sec) * 1000000L + time_end.tv_usec - time_start.tv_usec;
+
+        } while (frame_time_left > 0);
     }
 
     // print the final score
@@ -512,10 +534,22 @@ int run_game() {
         }
     }
 
-    // cleanup and exit
+    // cleanup memory
     free_snake(snake);
 
+    // return retry result
     return retry;
+}
+
+
+// start the game
+void start_game() {
+
+    // retry snake game until quit
+    int retry = 1;
+    while (retry) {
+        retry = run_game();
+    }
 }
 
 
@@ -532,6 +566,7 @@ int main(int argc, char *argv[]) {
     noecho();
     curs_set(0);
     keypad(stdscr, TRUE);
+    nodelay(stdscr, 1);
 
     // initialize colors
 	// if(has_colors()) {
@@ -540,12 +575,10 @@ int main(int argc, char *argv[]) {
     //     init_pair(2, COLOR_BLACK, COLOR_CYAN);
 	// }
 
-    // retry snake game until quit
-    int retry = 1;
-    while (retry) {
-        retry = run_game();
-    }
-    
+    // start the game
+    start_game();
+
+    // cleanup and exit
     fclose(log_file);
 	endwin();
 
